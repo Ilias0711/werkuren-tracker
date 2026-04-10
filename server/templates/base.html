@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>{% block title %}WerkTracker{% endblock %}</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet"/>
+  <style>
+    :root{--primary:#1e3a5f;--accent:#2196f3;--green:#22c55e;--red:#ef4444;--bg:#f0f4f8}
+    body{background:var(--bg);font-family:'Segoe UI',sans-serif;margin:0}
+
+    /* Sidebar */
+    .sidebar{width:230px;min-height:100vh;background:var(--primary);position:fixed;top:0;left:0;display:flex;flex-direction:column;z-index:100}
+    .sidebar .logo{padding:24px 20px 16px;font-size:1.3rem;font-weight:700;color:#fff;border-bottom:1px solid rgba(255,255,255,.1)}
+    .sidebar .logo span{color:var(--accent)}
+    .sidebar nav a{display:flex;align-items:center;gap:10px;padding:13px 22px;color:rgba(255,255,255,.75);text-decoration:none;font-size:.95rem;transition:background .2s,color .2s}
+    .sidebar nav a:hover,.sidebar nav a.active{background:rgba(255,255,255,.1);color:#fff}
+    .sidebar nav a i{font-size:1.1rem;width:20px}
+    .sidebar .user-box{margin:auto 0 0;padding:14px 18px;border-top:1px solid rgba(255,255,255,.1);display:flex;align-items:center;gap:10px}
+    .sidebar .user-box .avatar{width:34px;height:34px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.85rem;flex-shrink:0}
+    .sidebar .user-box .info{min-width:0}
+    .sidebar .user-box .uname{color:#fff;font-size:.85rem;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .sidebar .user-box .urole{color:rgba(255,255,255,.5);font-size:.72rem}
+    .sidebar .user-box a.logout{color:rgba(255,255,255,.5);font-size:.8rem;text-decoration:none;display:block;margin-top:2px}
+    .sidebar .user-box a.logout:hover{color:#fff}
+
+    /* Main */
+    .main{margin-left:230px;padding:28px 32px}
+
+    /* Cards */
+    .stat-card{background:#fff;border-radius:14px;padding:20px 22px;box-shadow:0 2px 8px rgba(0,0,0,.07)}
+    .stat-card .label{font-size:.78rem;color:#6b7280;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+    .stat-card .value{font-size:1.8rem;font-weight:800;color:var(--primary)}
+    .stat-card .icon{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:1.3rem}
+    .card-box{background:#fff;border-radius:14px;box-shadow:0 2px 8px rgba(0,0,0,.07);overflow:hidden}
+    .card-box .cb-header{padding:16px 22px;font-weight:700;color:var(--primary);border-bottom:1px solid #e5e7eb;font-size:1rem}
+
+    /* Table */
+    .table thead th{background:#f8fafc;font-size:.78rem;text-transform:uppercase;letter-spacing:.5px;color:#6b7280;border:none;padding:11px 16px}
+    .table tbody td{padding:13px 16px;vertical-align:middle;border-color:#f1f5f9}
+    .table tbody tr:hover{background:#f8fafc}
+
+    /* Badges */
+    .badge-online{background:#dcfce7;color:#15803d;font-size:.75rem;font-weight:700;padding:4px 11px;border-radius:20px}
+    .badge-offline{background:#f1f5f9;color:#64748b;font-size:.75rem;font-weight:700;padding:4px 11px;border-radius:20px}
+
+    /* Avatar */
+    .emp-avatar{width:36px;height:36px;border-radius:50%;background:var(--accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;font-weight:700;font-size:.88rem;margin-right:8px}
+
+    /* Topbar */
+    .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:24px}
+    .topbar h1{font-size:1.5rem;font-weight:800;color:var(--primary);margin:0}
+
+    /* Flash messages */
+    .flash-success{background:#dcfce7;color:#15803d;border:1px solid #bbf7d0;border-radius:10px;padding:12px 18px;margin-bottom:18px;font-weight:600}
+    .flash-error{background:#fee2e2;color:#dc2626;border:1px solid #fecaca;border-radius:10px;padding:12px 18px;margin-bottom:18px;font-weight:600}
+
+    @media(max-width:768px){.sidebar{display:none}.main{margin-left:0;padding:16px}}
+  </style>
+  {% block extra_head %}{% endblock %}
+</head>
+<body>
+{% block body %}{% endblock %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>

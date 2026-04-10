@@ -1,0 +1,431 @@
+{% extends "base.html" %}
+{% block title %}Tracking – WerkTracker{% endblock %}
+
+{% block extra_head %}
+<style>
+  .track-card {
+    background: #fff;
+    border-radius: 20px;
+    box-shadow: 0 4px 24px rgba(0,0,0,.10);
+    padding: 36px 32px;
+    max-width: 480px;
+    margin: 0 auto;
+  }
+  .timer-display {
+    font-size: 3.8rem;
+    font-weight: 900;
+    color: var(--primary);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 2px;
+    text-align: center;
+    padding: 22px 0 10px;
+    transition: color .3s;
+  }
+  .timer-display.paused { color: #f97316; }
+  .timer-display.stopped { color: #94a3b8; }
+
+  .status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-size: .95rem;
+    font-weight: 700;
+    padding: 6px 18px;
+    border-radius: 30px;
+    margin: 0 auto 24px;
+  }
+  .status-idle    { background:#f1f5f9; color:#94a3b8; }
+  .status-working { background:#dcfce7; color:#16a34a; }
+  .status-paused  { background:#ffedd5; color:#ea580c; }
+
+  /* Knoppen */
+  .btn-track {
+    border: none;
+    border-radius: 14px;
+    font-size: 1rem;
+    font-weight: 800;
+    padding: 16px 0;
+    cursor: pointer;
+    transition: opacity .15s, transform .1s;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    color: #fff;
+  }
+  .btn-track:active { transform: scale(.96); }
+  .btn-track:disabled { opacity: .35; cursor: not-allowed; transform: none; }
+  .btn-track .icon { font-size: 1.6rem; line-height: 1; }
+  .btn-track .lbl  { font-size: .82rem; letter-spacing: .5px; }
+
+  .btn-start { background: #22c55e; }
+  .btn-start:hover:not(:disabled) { background: #16a34a; }
+  .btn-pause { background: #f97316; }
+  .btn-pause:hover:not(:disabled) { background: #ea580c; }
+  .btn-stop  { background: #ef4444; }
+  .btn-stop:hover:not(:disabled)  { background: #dc2626; }
+
+  .btn-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  /* Activiteit */
+  .act-bar-wrap { background:#f1f5f9; border-radius:20px; height:10px; overflow:hidden; margin:6px 0 4px; }
+  .act-bar-fill { height:100%; border-radius:20px; background:var(--green); transition:width .5s; }
+
+  /* Screenshot info */
+  .ss-info {
+    background:#f8fafc;
+    border-radius:10px;
+    padding:10px 14px;
+    font-size:.83rem;
+    color:#6b7280;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    min-height:38px;
+  }
+
+  /* Screen share banner */
+  .share-banner {
+    background:#eff6ff;
+    border:1px solid #bfdbfe;
+    border-radius:10px;
+    padding:10px 14px;
+    font-size:.83rem;
+    color:#1d4ed8;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin-bottom:14px;
+  }
+</style>
+{% endblock %}
+
+{% block body %}
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="logo"><i class="bi bi-clock-history me-2"></i>Werk<span>Tracker</span></div>
+  <nav>
+    {% if role == 'manager' %}
+      <a href="/"><i class="bi bi-speedometer2"></i> Dashboard</a>
+      <a href="/medewerkers"><i class="bi bi-people"></i> Medewerkers</a>
+      <a href="/rapporten"><i class="bi bi-calendar3"></i> Rapporten</a>
+      <a href="/screenshots-overzicht"><i class="bi bi-camera"></i> Screenshots</a>
+    {% else %}
+      <a href="/mijn-dashboard"><i class="bi bi-house"></i> Mijn dashboard</a>
+      <a href="/mijn-uren"><i class="bi bi-clock-history"></i> Mijn uren</a>
+      <a href="/mijn-screenshots"><i class="bi bi-camera"></i> Mijn screenshots</a>
+    {% endif %}
+    <a href="/tracking" class="active"><i class="bi bi-play-circle"></i> Tracking</a>
+  </nav>
+  <div class="user-box">
+    <div class="avatar">{{ name[0]|upper }}</div>
+    <div class="info">
+      <div class="uname">{{ name }}</div>
+      <div class="urole">{{ 'Manager' if role == 'manager' else 'Medewerker' }}</div>
+      <a href="/logout" class="logout"><i class="bi bi-box-arrow-right me-1"></i>Uitloggen</a>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="topbar" style="margin-bottom:28px">
+    <h1><i class="bi bi-play-circle me-2" style="color:var(--accent)"></i>Tijdregistratie</h1>
+  </div>
+
+  <div class="track-card">
+
+    <!-- Status badge -->
+    <div class="text-center mb-2">
+      <span class="status-badge status-idle" id="statusBadge">
+        <i class="bi bi-circle"></i> <span id="statusText">Klaar</span>
+      </span>
+    </div>
+
+    <!-- Timer -->
+    <div class="timer-display stopped" id="timerDisplay">00:00:00</div>
+
+    <!-- Netto/pauze info -->
+    <div class="text-center mb-4" style="font-size:.82rem;color:#9ca3af;min-height:20px" id="pauseInfo"></div>
+
+    <!-- Screen share banner -->
+    <div class="share-banner" id="shareBanner" style="display:none">
+      <i class="bi bi-display"></i>
+      <span>Scherm wordt gedeeld — screenshots worden automatisch gemaakt</span>
+    </div>
+
+    <!-- Knoppen -->
+    <div class="btn-grid">
+      <button class="btn-track btn-start" id="btnStart" onclick="startTracking()">
+        <span class="icon">▶</span>
+        <span class="lbl">START</span>
+      </button>
+      <button class="btn-track btn-pause" id="btnPause" onclick="togglePause()" disabled>
+        <span class="icon" id="pauseIcon">⏸</span>
+        <span class="lbl" id="pauseLbl">PAUZE</span>
+      </button>
+      <button class="btn-track btn-stop" id="btnStop" onclick="stopTracking()" disabled>
+        <span class="icon">⏹</span>
+        <span class="lbl">STOP</span>
+      </button>
+    </div>
+
+    <!-- Activiteit -->
+    <div style="margin-bottom:16px">
+      <div style="display:flex;justify-content:space-between;font-size:.8rem;font-weight:600;color:#6b7280;margin-bottom:2px">
+        <span>Activiteitsniveau</span>
+        <span id="actPct">0%</span>
+      </div>
+      <div class="act-bar-wrap">
+        <div class="act-bar-fill" id="actBar" style="width:0%"></div>
+      </div>
+    </div>
+
+    <!-- Screenshot info -->
+    <div class="ss-info" id="ssInfo">
+      <i class="bi bi-camera" style="font-size:1.1rem"></i>
+      <span>Nog geen screenshots — start de tracking om te beginnen</span>
+    </div>
+
+    <!-- Vandaag totaal -->
+    <div style="margin-top:18px;padding-top:16px;border-top:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center">
+      <span style="font-size:.85rem;color:#9ca3af;font-weight:600">Vandaag gewerkt (totaal)</span>
+      <span style="font-size:1.1rem;font-weight:800;color:var(--primary)" id="todayTotal">{{ today_worked }}</span>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // ── Config ──────────────────────────────────────────────────────────────────
+  const SERVER      = '';
+  const USER_ID     = {{ user_id }};
+  const USER_EMAIL  = "{{ email }}";
+  const USER_NAME   = "{{ name }}";
+  const SS_INTERVAL = {{ ss_interval }} * 60 * 1000; // ms
+
+  // ── State ────────────────────────────────────────────────────────────────────
+  let isTracking   = false;
+  let isPaused     = false;
+  let sessionId    = null;
+  let startTime    = null;
+  let pausedAt     = null;
+  let totalPaused  = 0;         // ms
+  let timerTick    = null;
+  let ssTimer      = null;
+  let screenStream = null;
+  let ssCount      = 0;
+  let actClicks    = 0;
+
+  // Muis/toets activiteit bijhouden
+  document.addEventListener('mousemove', () => actClicks++);
+  document.addEventListener('click',     () => actClicks += 2);
+  document.addEventListener('keydown',   () => actClicks += 3);
+
+  // ── Functies ─────────────────────────────────────────────────────────────────
+
+  async function startTracking() {
+    // Sessie starten op server
+    try {
+      const r = await fetch('/api/session/start', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({user_id: USER_ID, email: USER_EMAIL, name: USER_NAME})
+      });
+      const d = await r.json();
+      sessionId = d.session_id;
+    } catch(e) {
+      sessionId = 'offline_' + Date.now();
+    }
+
+    // Scherm delen voor screenshots
+    try {
+      screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { mediaSource: 'screen', width: {ideal:1920}, height: {ideal:1080} }
+      });
+      document.getElementById('shareBanner').style.display = 'flex';
+      screenStream.getVideoTracks()[0].addEventListener('ended', () => {
+        screenStream = null;
+        document.getElementById('shareBanner').style.display = 'none';
+      });
+    } catch(e) {
+      // Scherm delen geweigerd — tracking gaat door zonder screenshots
+    }
+
+    isTracking  = true;
+    isPaused    = false;
+    startTime   = Date.now();
+    totalPaused = 0;
+
+    setUI('working');
+    timerTick = setInterval(updateTimer, 1000);
+
+    // Screenshots elke X minuten
+    ssTimer = setInterval(takeScreenshot, SS_INTERVAL);
+  }
+
+  function togglePause() {
+    if (!isPaused) {
+      // Pauzeren
+      isPaused = true;
+      pausedAt = Date.now();
+      setUI('paused');
+    } else {
+      // Hervatten
+      totalPaused += Date.now() - pausedAt;
+      pausedAt     = null;
+      isPaused     = false;
+      setUI('working');
+    }
+  }
+
+  async function stopTracking() {
+    if (!confirm('Wil je de tracking stoppen?')) return;
+
+    isTracking = false;
+    isPaused   = false;
+    clearInterval(timerTick);
+    clearInterval(ssTimer);
+
+    if (screenStream) {
+      screenStream.getTracks().forEach(t => t.stop());
+      screenStream = null;
+    }
+
+    // Sessie stoppen op server
+    try {
+      await fetch('/api/session/stop', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({session_id: sessionId})
+      });
+    } catch(e) {}
+
+    sessionId = null;
+    setUI('idle');
+    document.getElementById('timerDisplay').textContent = '00:00:00';
+    document.getElementById('pauseInfo').textContent    = '';
+    document.getElementById('shareBanner').style.display = 'none';
+
+    // Vandaag totaal verversen
+    location.reload();
+  }
+
+  function updateTimer() {
+    if (!isTracking || isPaused) return;
+    const elapsed = Date.now() - startTime - totalPaused;
+    const total   = Math.max(0, Math.floor(elapsed / 1000));
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    document.getElementById('timerDisplay').textContent =
+      String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
+
+    // Pauze info
+    if (totalPaused > 0) {
+      const ps = Math.floor(totalPaused / 60000);
+      document.getElementById('pauseInfo').textContent = `Pauze: ${ps} min`;
+    }
+  }
+
+  async function takeScreenshot() {
+    if (!isTracking || isPaused) return;
+
+    // Activiteit berekenen
+    const activity = Math.min(100, Math.floor(actClicks / (SS_INTERVAL / 1000 / 5) * 100));
+    actClicks = 0;
+
+    let imgB64 = null;
+
+    if (screenStream && screenStream.active) {
+      try {
+        const track   = screenStream.getVideoTracks()[0];
+        const capture = new ImageCapture(track);
+        const bitmap  = await capture.grabFrame();
+        const canvas  = document.createElement('canvas');
+        // Halveer resolutie
+        canvas.width  = Math.floor(bitmap.width  / 2);
+        canvas.height = Math.floor(bitmap.height / 2);
+        canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+        imgB64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+      } catch(e) { imgB64 = null; }
+    }
+
+    if (!imgB64) return;
+
+    try {
+      await fetch('/api/screenshot', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          session_id: sessionId,
+          user_id:    USER_ID,
+          email:      USER_EMAIL,
+          name:       USER_NAME,
+          image:      imgB64,
+          activity:   activity
+        })
+      });
+
+      ssCount++;
+      const now = new Date().toLocaleTimeString('nl-NL');
+      document.getElementById('ssInfo').innerHTML =
+        '<i class="bi bi-camera-fill" style="color:#22c55e;font-size:1.1rem"></i>' +
+        ` Screenshot ${ssCount} gemaakt om ${now}`;
+
+      // Activiteit balk updaten
+      document.getElementById('actBar').style.width = activity + '%';
+      document.getElementById('actBar').style.background =
+        activity >= 70 ? '#22c55e' : activity >= 30 ? '#f97316' : '#ef4444';
+      document.getElementById('actPct').textContent = activity + '%';
+
+    } catch(e) {}
+  }
+
+  function setUI(state) {
+    const timer  = document.getElementById('timerDisplay');
+    const badge  = document.getElementById('statusBadge');
+    const stText = document.getElementById('statusText');
+    const pIcon  = document.getElementById('pauseIcon');
+    const pLbl   = document.getElementById('pauseLbl');
+
+    const btnStart = document.getElementById('btnStart');
+    const btnPause = document.getElementById('btnPause');
+    const btnStop  = document.getElementById('btnStop');
+
+    if (state === 'working') {
+      timer.className  = 'timer-display';
+      badge.className  = 'status-badge status-working';
+      stText.innerHTML = '<i class="bi bi-circle-fill" style="font-size:.6rem"></i> Aan het werk';
+      pIcon.textContent = '⏸'; pLbl.textContent = 'PAUZE';
+      btnPause.style.background = '#f97316';
+      btnStart.disabled = true;
+      btnPause.disabled = false;
+      btnStop.disabled  = false;
+    } else if (state === 'paused') {
+      timer.className  = 'timer-display paused';
+      badge.className  = 'status-badge status-paused';
+      stText.innerHTML = '⏸ Gepauzeerd';
+      pIcon.textContent = '▶'; pLbl.textContent = 'HERVAT';
+      btnPause.style.background = '#22c55e';
+    } else {
+      timer.className  = 'timer-display stopped';
+      badge.className  = 'status-badge status-idle';
+      stText.textContent = 'Klaar';
+      btnStart.disabled = false;
+      btnPause.disabled = true;
+      btnStop.disabled  = true;
+      document.getElementById('actBar').style.width = '0%';
+      document.getElementById('actPct').textContent = '0%';
+      document.getElementById('ssInfo').innerHTML =
+        '<i class="bi bi-camera"></i> Nog geen screenshots — start de tracking om te beginnen';
+      ssCount = 0;
+    }
+  }
+</script>
+{% endblock %}

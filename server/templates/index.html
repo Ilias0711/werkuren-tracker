@@ -1,0 +1,149 @@
+{% extends "base.html" %}
+{% block title %}Dashboard – WerkTracker{% endblock %}
+
+{% block body %}
+<!-- Sidebar -->
+<div class="sidebar">
+  <div class="logo"><i class="bi bi-clock-history me-2"></i>Werk<span>Tracker</span></div>
+  <nav>
+    <a href="/" class="active"><i class="bi bi-speedometer2"></i> Dashboard</a>
+    <a href="/medewerkers"><i class="bi bi-people"></i> Medewerkers</a>
+    <a href="/rapporten"><i class="bi bi-calendar3"></i> Rapporten</a>
+    <a href="/screenshots-overzicht"><i class="bi bi-camera"></i> Screenshots</a>
+    <a href="/tracking"><i class="bi bi-play-circle"></i> Tracking</a>
+  </nav>
+  <div class="user-box">
+    <div class="avatar">{{ manager_name[0]|upper }}</div>
+    <div class="info">
+      <div class="uname">{{ manager_name }}</div>
+      <div class="urole">Manager</div>
+      <a href="/logout" class="logout"><i class="bi bi-box-arrow-right me-1"></i>Uitloggen</a>
+    </div>
+  </div>
+</div>
+
+<!-- Main -->
+<div class="main">
+  <!-- Topbar -->
+  <div class="topbar">
+    <h1><i class="bi bi-speedometer2 me-2" style="color:var(--accent)"></i>Dashboard</h1>
+    <div class="d-flex align-items-center gap-3">
+      {% if active_count > 0 %}
+        <span class="badge-online" style="font-size:.82rem;padding:5px 14px">
+          <i class="bi bi-circle-fill me-1" style="font-size:.55rem"></i>{{ active_count }} actief
+        </span>
+      {% endif %}
+      <span style="font-size:.88rem;color:#6b7280" id="clock"></span>
+    </div>
+  </div>
+
+  <!-- Flash messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% for cat, msg in messages %}
+      <div class="flash-{{ cat }}"><i class="bi bi-{{ 'check' if cat == 'success' else 'exclamation' }}-circle me-2"></i>{{ msg }}</div>
+    {% endfor %}
+  {% endwith %}
+
+  <!-- Stat cards -->
+  <div class="row g-3 mb-4">
+    <div class="col-sm-6 col-xl-3">
+      <div class="stat-card d-flex align-items-center justify-content-between">
+        <div><div class="label">Medewerkers</div><div class="value">{{ stats|length }}</div></div>
+        <div class="icon" style="background:#e0f2fe;color:#0284c7"><i class="bi bi-people-fill"></i></div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+      <div class="stat-card d-flex align-items-center justify-content-between">
+        <div><div class="label">Nu actief</div><div class="value" style="color:var(--green)">{{ active_count }}</div></div>
+        <div class="icon" style="background:#dcfce7;color:#16a34a"><i class="bi bi-person-check-fill"></i></div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+      <div class="stat-card d-flex align-items-center justify-content-between">
+        <div><div class="label">Offline</div><div class="value" style="color:#64748b">{{ stats|length - active_count }}</div></div>
+        <div class="icon" style="background:#f1f5f9;color:#64748b"><i class="bi bi-person-dash-fill"></i></div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-xl-3">
+      <div class="stat-card d-flex align-items-center justify-content-between">
+        <div><div class="label">Screenshots totaal</div><div class="value">{{ stats | sum(attribute='screenshots') }}</div></div>
+        <div class="icon" style="background:#fef3c7;color:#d97706"><i class="bi bi-camera-fill"></i></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Employee table -->
+  <div class="card-box">
+    <div class="cb-header d-flex justify-content-between align-items-center">
+      <span><i class="bi bi-people me-2"></i>Medewerkers overzicht</span>
+      <a href="/medewerkers" style="font-size:.85rem;color:var(--accent);text-decoration:none;font-weight:600">
+        <i class="bi bi-plus-circle me-1"></i>Beheren
+      </a>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Medewerker</th>
+            <th>E-mail</th>
+            <th>Status</th>
+            <th>Vandaag</th>
+            <th>Deze week</th>
+            <th>Screenshots</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% if stats %}
+            {% for s in stats %}
+            <tr>
+              <td>
+                <span class="emp-avatar">{{ s.name[0]|upper }}</span>
+                <strong>{{ s.name }}</strong>
+              </td>
+              <td style="color:#6b7280;font-size:.88rem">{{ s.email }}</td>
+              <td>
+                {% if s.online %}
+                  <span class="badge-online"><i class="bi bi-circle-fill me-1" style="font-size:.5rem"></i>Online</span>
+                {% else %}
+                  <span class="badge-offline">Offline</span>
+                {% endif %}
+              </td>
+              <td><strong>{{ s.today }}</strong></td>
+              <td>{{ s.week }}</td>
+              <td><i class="bi bi-camera me-1 text-muted"></i>{{ s.screenshots }}</td>
+              <td>
+                <a href="/medewerker/{{ s.id }}" style="background:var(--accent);color:#fff;border-radius:8px;padding:5px 14px;text-decoration:none;font-size:.83rem;font-weight:600">
+                  <i class="bi bi-eye me-1"></i>Bekijk
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          {% else %}
+            <tr>
+              <td colspan="7" class="text-center py-5 text-muted">
+                <i class="bi bi-people display-5 d-block mb-2"></i>
+                Nog geen medewerkers.<br>
+                <a href="/medewerkers" style="color:var(--accent)">Voeg een medewerker toe</a>
+              </td>
+            </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function tick(){
+    const d=new Date();
+    document.getElementById('clock').textContent=
+      d.toLocaleDateString('nl-NL',{weekday:'long',day:'numeric',month:'long'})+' '+
+      d.toLocaleTimeString('nl-NL');
+  }
+  tick(); setInterval(tick,1000);
+  setTimeout(()=>location.reload(),30000);
+</script>
+{% endblock %}

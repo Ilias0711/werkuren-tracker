@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Mijn screenshots – WerkTracker{% endblock %}
+
+{% block extra_head %}
+<style>
+  .ss-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(210px,1fr));gap:14px;padding:18px}
+  .ss-card{background:#f8fafc;border-radius:12px;overflow:hidden;border:1px solid #e5e7eb;transition:transform .2s,box-shadow .2s;cursor:pointer}
+  .ss-card:hover{transform:translateY(-3px);box-shadow:0 8px 22px rgba(0,0,0,.13)}
+  .ss-card img{width:100%;height:130px;object-fit:cover}
+  .ss-card .info{padding:8px 10px}
+</style>
+{% endblock %}
+
+{% block body %}
+<div class="sidebar">
+  <div class="logo"><i class="bi bi-clock-history me-2"></i>Werk<span>Tracker</span></div>
+  <nav>
+    <a href="/mijn-dashboard"><i class="bi bi-house"></i> Mijn dashboard</a>
+    <a href="/mijn-uren"><i class="bi bi-clock-history"></i> Mijn uren</a>
+    <a href="/mijn-screenshots" class="active"><i class="bi bi-camera"></i> Mijn screenshots</a>
+  </nav>
+  <div class="user-box">
+    <div class="avatar">{{ name[0]|upper }}</div>
+    <div class="info">
+      <div class="uname">{{ name }}</div>
+      <div class="urole">Medewerker</div>
+      <a href="/logout" class="logout"><i class="bi bi-box-arrow-right me-1"></i>Uitloggen</a>
+    </div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="topbar">
+    <h1><i class="bi bi-camera me-2" style="color:var(--accent)"></i>Mijn screenshots</h1>
+    <span style="font-size:.88rem;color:#6b7280">{{ screenshots|length }} screenshots</span>
+  </div>
+
+  <div class="card-box">
+    <div class="cb-header"><i class="bi bi-grid me-2"></i>Overzicht (meest recent eerst)</div>
+    {% if screenshots %}
+      <div class="ss-grid">
+        {% for sc in screenshots %}
+        <div class="ss-card" onclick="openModal('/screenshots/{{ sc.filename }}','{{ sc.timestamp[:16]|replace('T',' ') }}',{{ sc.activity }})">
+          <img src="/screenshots/{{ sc.filename }}" alt="screenshot" loading="lazy"/>
+          <div class="info">
+            <div style="font-size:.77rem;color:#6b7280"><i class="bi bi-clock me-1"></i>{{ sc.timestamp[:16]|replace('T',' ') }}</div>
+            <div style="font-size:.73rem;font-weight:700;color:{% if sc.activity >= 70 %}#16a34a{% elif sc.activity >= 30 %}#d97706{% else %}#dc2626{% endif %}">
+              <i class="bi bi-activity me-1"></i>{{ sc.activity }}% activiteit
+            </div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="text-center py-5 text-muted">
+        <i class="bi bi-camera display-4 d-block mb-2"></i>
+        Nog geen screenshots.<br><small>Start de tracker-app om te beginnen.</small>
+      </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="ssModal" tabindex="-1">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content" style="border-radius:14px;border:none">
+      <div class="modal-header" style="border:none;padding:16px 22px">
+        <h5 class="modal-title fw-bold" id="ssTitle" style="color:var(--primary)"></h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" style="padding:0 22px 22px">
+        <img id="ssImg" src="" style="width:100%;border-radius:8px" alt="screenshot"/>
+        <div id="ssAct" class="mt-2" style="font-size:.85rem;color:#6b7280"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  function openModal(src,ts,act){
+    document.getElementById('ssImg').src=src;
+    document.getElementById('ssTitle').textContent='Screenshot – '+ts;
+    document.getElementById('ssAct').innerHTML='<i class="bi bi-activity me-1"></i>Activiteit: <strong>'+act+'%</strong>';
+    new bootstrap.Modal(document.getElementById('ssModal')).show();
+  }
+</script>
+{% endblock %}
