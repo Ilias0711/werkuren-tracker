@@ -1,0 +1,15 @@
+name: Extend PythonAnywhere Web App
+
+on:
+  schedule:
+    - cron: '0 9 1 * *'  # Elke 1e van de maand om 9:00
+  workflow_dispatch:       # Ook handmatig uitvoerbaar
+
+jobs:
+  extend:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extend PythonAnywhere web app
+        run: |
+          curl -s -X POST "https://eu.pythonanywhere.com/api/v0/user/werktracker/webapps/werktracker.eu.pythonanywhere.com/extend/" \
+            -H "Authorization: Token ${{ secrets.PYTHONANYWHERE_TOKEN }}"
