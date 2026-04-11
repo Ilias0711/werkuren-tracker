@@ -105,7 +105,7 @@
     <div class="table-responsive">
       <table class="table table-hover mb-0">
         <thead>
-          <tr><th>Datum</th><th>Start</th><th>Stop</th><th>Duur</th><th>Status</th></tr>
+          <tr><th>Datum</th><th>Start</th><th>Stop</th><th>Duur</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
           {% if sessions %}
@@ -122,13 +122,62 @@
                   <span class="badge-offline">Klaar</span>
                 {% endif %}
               </td>
+              <td style="white-space:nowrap">
+                <button class="btn btn-sm btn-outline-primary"
+                  onclick="openEdit({{ s.id }}, '{{ s.start_time[:16] }}', '{{ s.end_time[:16] if s.end_time else '' }}', {{ user.id }})"
+                  style="font-size:.75rem;padding:3px 10px;border-radius:8px">
+                  <i class="bi bi-pencil"></i> Bewerken
+                </button>
+                <form method="POST" action="/sessie/{{ s.id }}/verwijderen" style="display:inline"
+                      onsubmit="return confirm('Sessie verwijderen?')">
+                  <input type="hidden" name="user_id" value="{{ user.id }}">
+                  <button type="submit" class="btn btn-sm btn-outline-danger"
+                    style="font-size:.75rem;padding:3px 10px;border-radius:8px">
+                    <i class="bi bi-trash"></i>
+                  </button>
+                </form>
+              </td>
             </tr>
             {% endfor %}
           {% else %}
-            <tr><td colspan="5" class="text-center py-4 text-muted">Geen sessies gevonden.</td></tr>
+            <tr><td colspan="6" class="text-center py-4 text-muted">Geen sessies gevonden.</td></tr>
           {% endif %}
         </tbody>
       </table>
+    </div>
+  </div>
+</div>
+
+<!-- Bewerkmodal -->
+<div class="modal fade" id="editModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content" style="border-radius:16px;border:none">
+      <div class="modal-header" style="border:none;padding:20px 24px 0">
+        <h5 class="modal-title fw-bold" style="color:var(--primary)"><i class="bi bi-pencil-square me-2"></i>Sessie bewerken</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <form id="editForm" method="POST">
+        <input type="hidden" name="user_id" id="editUserId">
+        <div class="modal-body" style="padding:20px 24px">
+          <div class="mb-3">
+            <label class="form-label fw-600" style="font-size:.88rem;font-weight:700">Starttijd</label>
+            <input type="datetime-local" class="form-control" name="start_time" id="editStart" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label fw-600" style="font-size:.88rem;font-weight:700">Stoptijd</label>
+            <input type="datetime-local" class="form-control" name="end_time" id="editEnd" required>
+          </div>
+          <div class="alert alert-info" style="font-size:.82rem;border-radius:10px;padding:10px 14px">
+            <i class="bi bi-info-circle me-1"></i>De duur wordt automatisch herberekend op basis van start- en stoptijd.
+          </div>
+        </div>
+        <div class="modal-footer" style="border:none;padding:0 24px 20px;gap:8px">
+          <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:10px;font-weight:600">Annuleren</button>
+          <button type="submit" class="btn btn-primary" style="border-radius:10px;font-weight:700;background:var(--accent);border:none">
+            <i class="bi bi-check-lg me-1"></i>Opslaan
+          </button>
+        </div>
+      </form>
     </div>
   </div>
 </div>
@@ -157,6 +206,14 @@
     document.getElementById('ssTitle').textContent='Screenshot – '+ts;
     document.getElementById('ssAct').innerHTML='<i class="bi bi-activity me-1"></i>Activiteitsniveau: <strong>'+act+'%</strong>';
     new bootstrap.Modal(document.getElementById('ssModal')).show();
+  }
+
+  function openEdit(sessionId, startTime, endTime, userId) {
+    document.getElementById('editForm').action = '/sessie/' + sessionId + '/bewerken';
+    document.getElementById('editUserId').value = userId;
+    document.getElementById('editStart').value = startTime;
+    document.getElementById('editEnd').value = endTime || startTime;
+    new bootstrap.Modal(document.getElementById('editModal')).show();
   }
 </script>
 {% endblock %}

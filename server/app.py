@@ -197,6 +197,34 @@ def medewerker_verwijderen(user_id):
     return redirect(url_for("medewerkers"))
 
 
+@app.route("/sessie/<int:session_id>/bewerken", methods=["POST"])
+@manager_required
+def sessie_bewerken(session_id):
+    start_time = request.form.get("start_time", "").replace("T", " ").strip()
+    end_time   = request.form.get("end_time", "").replace("T", " ").strip()
+    # Voeg seconden toe als die ontbreken
+    if len(start_time) == 16:
+        start_time += ":00"
+    if len(end_time) == 16:
+        end_time += ":00"
+    user_id = request.form.get("user_id")
+    ok = db.edit_session(session_id, start_time, end_time)
+    if ok:
+        flash("Sessie bijgewerkt.", "success")
+    else:
+        flash("Fout bij bijwerken sessie.", "error")
+    return redirect(url_for("medewerker_detail", user_id=user_id))
+
+
+@app.route("/sessie/<int:session_id>/verwijderen", methods=["POST"])
+@manager_required
+def sessie_verwijderen(session_id):
+    user_id = request.form.get("user_id")
+    db.delete_session(session_id)
+    flash("Sessie verwijderd.", "success")
+    return redirect(url_for("medewerker_detail", user_id=user_id))
+
+
 @app.route("/medewerkers/wachtwoord/<int:user_id>", methods=["POST"])
 @manager_required
 def medewerker_wachtwoord(user_id):

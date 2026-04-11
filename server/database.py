@@ -191,6 +191,32 @@ def update_session_pause(session_id: int, pause_sec: int):
     conn.close()
 
 
+def edit_session(session_id: int, start_time: str, end_time: str):
+    """Manager past start/stoptijd aan. total_sec wordt herberekend."""
+    conn = get_db()
+    try:
+        start = datetime.fromisoformat(start_time)
+        end   = datetime.fromisoformat(end_time)
+        total_sec = max(0, int((end - start).total_seconds()))
+        conn.execute(
+            "UPDATE sessions SET start_time=?, end_time=?, total_sec=?, date=? WHERE id=?",
+            (start_time, end_time, total_sec, start.date().isoformat(), session_id)
+        )
+        conn.commit()
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
+
+
+def delete_session(session_id: int):
+    conn = get_db()
+    conn.execute("DELETE FROM sessions WHERE id=?", (session_id,))
+    conn.commit()
+    conn.close()
+
+
 def get_active_sessions():
     conn = get_db()
     rows = conn.execute("SELECT * FROM sessions WHERE end_time IS NULL ORDER BY start_time DESC").fetchall()
