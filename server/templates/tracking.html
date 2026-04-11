@@ -235,7 +235,8 @@
       startTime,
       totalPaused,
       isPaused,
-      pausedAt
+      pausedAt,
+      lastSeen: Date.now()
     }));
   }
 
@@ -270,21 +271,39 @@
       const d = await r.json();
       if (d.session && d.session.id) {
         const srv = d.session;
-        // Herstel state
-        sessionId   = srv.id;
-        startTime   = new Date(srv.start_time).getTime();
+        sessionId = srv.id;
+        startTime = new Date(srv.start_time).getTime();
 
-        // Pauze-state uit localStorage halen (als sessie-id overeenkomt)
         const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
         if (saved && saved.sessionId === sessionId) {
           totalPaused = saved.totalPaused || 0;
           isPaused    = saved.isPaused    || false;
           pausedAt    = saved.pausedAt    || null;
+
+          // Offline tijd detecteren: tijd tussen sluiten en nu heropenen
+          const lastSeen   = saved.lastSeen || Date.now();
+          const offlineMs  = Date.now() - lastSeen;
+          const THRESHOLD  = 2 * 60 * 1000; // 2 minuten
+
+          if (!isPaused && offlineMs > THRESHOLD) {
+            // Browser was gesloten terwijl tracker liep → tel offline tijd als pauze
+            totalPaused += offlineMs;
+            showToast(`⏸ ${Math.round(offlineMs/60000)} min offline — niet meegeteld als werktijd`);
+          }
         } else {
-          // Geen lokale state: gebruik server pause_sec
-          totalPaused = (srv.pause_sec || 0) * 1000;
-          isPaused    = false;
-          pausedAt    = null;
+          // Geen lokale state — gebruik server pause_sec als basis
+          // Voeg ook alle tijd toe sinds sessie start die niet als werk is geregistreerd
+          const serverPauseMs  = (srv.pause_sec || 0) * 1000;
+          const totalElapsedMs = Date.now() - startTime;
+          // Schat: alles boven 12 uur is waarschijnlijk offline tijd
+          const maxWorkMs      = 12 * 60 * 60 * 1000;
+          if (totalElapsedMs - serverPauseMs > maxWorkMs) {
+            totalPaused = totalElapsedMs - maxWorkMs;
+          } else {
+            totalPaused = serverPauseMs;
+          }
+          isPaused = false;
+          pausedAt = null;
         }
 
         isTracking = true;
@@ -294,7 +313,6 @@
         syncTimer = setInterval(syncPause, 30000);
         updateTimer();
 
-        // Toon herstelmelding
         showToast('⏱ Sessie hersteld — tracker loopt door');
       }
     } catch(e) {}
