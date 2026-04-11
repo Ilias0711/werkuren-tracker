@@ -203,34 +203,112 @@
 {% block scripts %}
 <script>
   // ── Config ──────────────────────────────────────────────────────────────────
-  const SERVER      = '';
   const USER_ID     = {{ user_id }};
   const USER_EMAIL  = "{{ email }}";
   const USER_NAME   = "{{ name }}";
   const SS_INTERVAL = {{ ss_interval }} * 60 * 1000; // ms
+  const LS_KEY      = `wt_session_${USER_ID}`;
 
   // ── State ────────────────────────────────────────────────────────────────────
   let isTracking   = false;
   let isPaused     = false;
   let sessionId    = null;
-  let startTime    = null;
-  let pausedAt     = null;
-  let totalPaused  = 0;         // ms
+  let startTime    = null;   // ms timestamp
+  let pausedAt     = null;   // ms timestamp
+  let totalPaused  = 0;      // ms
   let timerTick    = null;
   let ssTimer      = null;
+  let syncTimer    = null;
   let screenStream = null;
   let ssCount      = 0;
   let actClicks    = 0;
 
-  // Muis/toets activiteit bijhouden
   document.addEventListener('mousemove', () => actClicks++);
   document.addEventListener('click',     () => actClicks += 2);
   document.addEventListener('keydown',   () => actClicks += 3);
 
+  // ── LocalStorage helpers ──────────────────────────────────────────────────────
+  function saveState() {
+    if (!sessionId) return;
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      sessionId,
+      startTime,
+      totalPaused,
+      isPaused,
+      pausedAt
+    }));
+  }
+
+  function clearState() {
+    localStorage.removeItem(LS_KEY);
+  }
+
+  // ── Sync pauze naar server ────────────────────────────────────────────────────
+  async function syncPause() {
+    if (!sessionId) return;
+    const pauseSec = Math.floor(currentTotalPausedMs() / 1000);
+    try {
+      await fetch('/api/session/pause', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({session_id: sessionId, pause_sec: pauseSec})
+      });
+    } catch(e) {}
+  }
+
+  function currentTotalPausedMs() {
+    if (isPaused && pausedAt) {
+      return totalPaused + (Date.now() - pausedAt);
+    }
+    return totalPaused;
+  }
+
+  // ── Pagina laden: herstel actieve sessie ─────────────────────────────────────
+  window.addEventListener('DOMContentLoaded', async () => {
+    try {
+      const r = await fetch(`/api/session/active?user_id=${USER_ID}`);
+      const d = await r.json();
+      if (d.session && d.session.id) {
+        const srv = d.session;
+        // Herstel state
+        sessionId   = srv.id;
+        startTime   = new Date(srv.start_time).getTime();
+
+        // Pauze-state uit localStorage halen (als sessie-id overeenkomt)
+        const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
+        if (saved && saved.sessionId === sessionId) {
+          totalPaused = saved.totalPaused || 0;
+          isPaused    = saved.isPaused    || false;
+          pausedAt    = saved.pausedAt    || null;
+        } else {
+          // Geen lokale state: gebruik server pause_sec
+          totalPaused = (srv.pause_sec || 0) * 1000;
+          isPaused    = false;
+          pausedAt    = null;
+        }
+
+        isTracking = true;
+        setUI(isPaused ? 'paused' : 'working');
+        timerTick = setInterval(updateTimer, 1000);
+        ssTimer   = setInterval(takeScreenshot, SS_INTERVAL);
+        syncTimer = setInterval(syncPause, 30000);
+        updateTimer();
+
+        // Toon herstelmelding
+        showToast('⏱ Sessie hersteld — tracker loopt door');
+      }
+    } catch(e) {}
+  });
+
+  // Sla state op bij sluiten tabblad
+  window.addEventListener('beforeunload', () => {
+    saveState();
+    if (sessionId) syncPause();
+  });
+
   // ── Functies ─────────────────────────────────────────────────────────────────
 
   async function startTracking() {
-    // Sessie starten op server
     try {
       const r = await fetch('/api/session/start', {
         method: 'POST',
@@ -243,7 +321,6 @@
       sessionId = 'offline_' + Date.now();
     }
 
-    // Scherm delen voor screenshots
     try {
       screenStream = await navigator.mediaDevices.getDisplayMedia({
         video: { mediaSource: 'screen', width: {ideal:1920}, height: {ideal:1080} }
@@ -253,35 +330,34 @@
         screenStream = null;
         document.getElementById('shareBanner').style.display = 'none';
       });
-    } catch(e) {
-      // Scherm delen geweigerd — tracking gaat door zonder screenshots
-    }
+    } catch(e) {}
 
     isTracking  = true;
     isPaused    = false;
     startTime   = Date.now();
     totalPaused = 0;
+    pausedAt    = null;
 
     setUI('working');
     timerTick = setInterval(updateTimer, 1000);
-
-    // Screenshots elke X minuten
-    ssTimer = setInterval(takeScreenshot, SS_INTERVAL);
+    ssTimer   = setInterval(takeScreenshot, SS_INTERVAL);
+    syncTimer = setInterval(syncPause, 30000);
+    saveState();
   }
 
   function togglePause() {
     if (!isPaused) {
-      // Pauzeren
       isPaused = true;
       pausedAt = Date.now();
       setUI('paused');
     } else {
-      // Hervatten
       totalPaused += Date.now() - pausedAt;
       pausedAt     = null;
       isPaused     = false;
       setUI('working');
     }
+    saveState();
+    syncPause();
   }
 
   async function stopTracking() {
@@ -291,34 +367,34 @@
     isPaused   = false;
     clearInterval(timerTick);
     clearInterval(ssTimer);
+    clearInterval(syncTimer);
 
     if (screenStream) {
       screenStream.getTracks().forEach(t => t.stop());
       screenStream = null;
     }
 
-    // Sessie stoppen op server
+    const pauseSec = Math.floor(currentTotalPausedMs() / 1000);
     try {
       await fetch('/api/session/stop', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({session_id: sessionId})
+        body: JSON.stringify({session_id: sessionId, pause_sec: pauseSec})
       });
     } catch(e) {}
 
+    clearState();
     sessionId = null;
     setUI('idle');
     document.getElementById('timerDisplay').textContent = '00:00:00';
     document.getElementById('pauseInfo').textContent    = '';
     document.getElementById('shareBanner').style.display = 'none';
-
-    // Vandaag totaal verversen
     location.reload();
   }
 
   function updateTimer() {
-    if (!isTracking || isPaused) return;
-    const elapsed = Date.now() - startTime - totalPaused;
+    if (!isTracking) return;
+    const elapsed = Date.now() - startTime - currentTotalPausedMs();
     const total   = Math.max(0, Math.floor(elapsed / 1000));
     const h = Math.floor(total / 3600);
     const m = Math.floor((total % 3600) / 60);
@@ -326,36 +402,33 @@
     document.getElementById('timerDisplay').textContent =
       String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
 
-    // Pauze info
-    if (totalPaused > 0) {
-      const ps = Math.floor(totalPaused / 60000);
-      document.getElementById('pauseInfo').textContent = `Pauze: ${ps} min`;
+    if (currentTotalPausedMs() > 0) {
+      const pm = Math.floor(currentTotalPausedMs() / 60000);
+      document.getElementById('pauseInfo').textContent = `Pauzetijd: ${pm} min`;
     }
+
+    saveState();
   }
 
   async function takeScreenshot() {
     if (!isTracking || isPaused) return;
 
-    // Activiteit berekenen
     const activity = Math.min(100, Math.floor(actClicks / (SS_INTERVAL / 1000 / 5) * 100));
     actClicks = 0;
 
     let imgB64 = null;
-
     if (screenStream && screenStream.active) {
       try {
         const track   = screenStream.getVideoTracks()[0];
         const capture = new ImageCapture(track);
         const bitmap  = await capture.grabFrame();
         const canvas  = document.createElement('canvas');
-        // Halveer resolutie
         canvas.width  = Math.floor(bitmap.width  / 2);
         canvas.height = Math.floor(bitmap.height / 2);
         canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height);
         imgB64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
       } catch(e) { imgB64 = null; }
     }
-
     if (!imgB64) return;
 
     try {
@@ -363,37 +436,29 @@
         method: 'POST',
         headers: {'Content-Type':'application/json'},
         body: JSON.stringify({
-          session_id: sessionId,
-          user_id:    USER_ID,
-          email:      USER_EMAIL,
-          name:       USER_NAME,
-          image:      imgB64,
-          activity:   activity
+          session_id: sessionId, user_id: USER_ID,
+          email: USER_EMAIL, name: USER_NAME,
+          image: imgB64, activity
         })
       });
-
       ssCount++;
       const now = new Date().toLocaleTimeString('nl-NL');
       document.getElementById('ssInfo').innerHTML =
         '<i class="bi bi-camera-fill" style="color:#22c55e;font-size:1.1rem"></i>' +
         ` Screenshot ${ssCount} gemaakt om ${now}`;
-
-      // Activiteit balk updaten
       document.getElementById('actBar').style.width = activity + '%';
       document.getElementById('actBar').style.background =
         activity >= 70 ? '#22c55e' : activity >= 30 ? '#f97316' : '#ef4444';
       document.getElementById('actPct').textContent = activity + '%';
-
     } catch(e) {}
   }
 
   function setUI(state) {
-    const timer  = document.getElementById('timerDisplay');
-    const badge  = document.getElementById('statusBadge');
-    const stText = document.getElementById('statusText');
-    const pIcon  = document.getElementById('pauseIcon');
-    const pLbl   = document.getElementById('pauseLbl');
-
+    const timer    = document.getElementById('timerDisplay');
+    const badge    = document.getElementById('statusBadge');
+    const stText   = document.getElementById('statusText');
+    const pIcon    = document.getElementById('pauseIcon');
+    const pLbl     = document.getElementById('pauseLbl');
     const btnStart = document.getElementById('btnStart');
     const btnPause = document.getElementById('btnPause');
     const btnStop  = document.getElementById('btnStop');
@@ -413,6 +478,9 @@
       stText.innerHTML = '⏸ Gepauzeerd';
       pIcon.textContent = '▶'; pLbl.textContent = 'HERVAT';
       btnPause.style.background = '#22c55e';
+      btnStart.disabled = true;
+      btnPause.disabled = false;
+      btnStop.disabled  = false;
     } else {
       timer.className  = 'timer-display stopped';
       badge.className  = 'status-badge status-idle';
@@ -426,6 +494,14 @@
         '<i class="bi bi-camera"></i> Nog geen screenshots — start de tracking om te beginnen';
       ssCount = 0;
     }
+  }
+
+  function showToast(msg) {
+    const t = document.createElement('div');
+    t.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#1e293b;color:#fff;padding:10px 22px;border-radius:30px;font-size:.9rem;font-weight:600;z-index:9999;box-shadow:0 4px 16px rgba(0,0,0,.2)';
+    t.textContent = msg;
+    document.body.appendChild(t);
+    setTimeout(() => t.remove(), 4000);
   }
 </script>
 {% endblock %}

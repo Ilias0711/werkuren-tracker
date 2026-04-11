@@ -39,10 +39,18 @@ def init_db():
             start_time TEXT    NOT NULL,
             end_time   TEXT,
             total_sec  INTEGER DEFAULT 0,
+            pause_sec  INTEGER DEFAULT 0,
             date       TEXT    NOT NULL,
             FOREIGN KEY (user_id) REFERENCES users(id)
         )
     """)
+
+    # Migratie: voeg pause_sec toe aan bestaande databases
+    try:
+        c.execute("ALTER TABLE sessions ADD COLUMN pause_sec INTEGER DEFAULT 0")
+        conn.commit()
+    except Exception:
+        pass  # Kolom bestaat al
 
     c.execute("""
         CREATE TABLE IF NOT EXISTS screenshots (
@@ -154,15 +162,32 @@ def start_session(user_id: int, email: str, name: str) -> int:
     return session_id
 
 
-def stop_session(session_id: int):
+def stop_session(session_id: int, pause_sec: int = 0):
     conn = get_db()
     row = conn.execute("SELECT start_time FROM sessions WHERE id=?", (session_id,)).fetchone()
     if row:
         start     = datetime.fromisoformat(row["start_time"])
-        total_sec = int((datetime.now() - start).total_seconds())
-        conn.execute("UPDATE sessions SET end_time=?, total_sec=? WHERE id=?",
-                     (datetime.now().isoformat(), total_sec, session_id))
+        total_sec = max(0, int((datetime.now() - start).total_seconds()) - pause_sec)
+        conn.execute("UPDATE sessions SET end_time=?, total_sec=?, pause_sec=? WHERE id=?",
+                     (datetime.now().isoformat(), total_sec, pause_sec, session_id))
         conn.commit()
+    conn.close()
+
+
+def get_active_session_for_user(user_id: int):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT * FROM sessions WHERE user_id=? AND end_time IS NULL ORDER BY start_time DESC LIMIT 1",
+        (user_id,)
+    ).fetchone()
+    conn.close()
+    return dict(row) if row else None
+
+
+def update_session_pause(session_id: int, pause_sec: int):
+    conn = get_db()
+    conn.execute("UPDATE sessions SET pause_sec=? WHERE id=?", (pause_sec, session_id))
+    conn.commit()
     conn.close()
 
 

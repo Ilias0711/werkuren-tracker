@@ -452,9 +452,29 @@ def session_start():
 def session_stop():
     data       = request.json or {}
     session_id = data.get("session_id")
+    pause_sec  = int(data.get("pause_sec", 0))
     if session_id:
-        db.stop_session(int(session_id))
+        db.stop_session(int(session_id), pause_sec)
     return jsonify({"status": "gestopt"})
+
+
+@app.route("/api/session/active")
+def session_active():
+    user_id = request.args.get("user_id")
+    if not user_id:
+        return jsonify({"session": None})
+    session = db.get_active_session_for_user(int(user_id))
+    return jsonify({"session": session})
+
+
+@app.route("/api/session/pause", methods=["POST"])
+def session_pause_sync():
+    data       = request.json or {}
+    session_id = data.get("session_id")
+    pause_sec  = int(data.get("pause_sec", 0))
+    if session_id:
+        db.update_session_pause(int(session_id), pause_sec)
+    return jsonify({"status": "ok"})
 
 
 @app.route("/api/screenshot", methods=["POST"])
