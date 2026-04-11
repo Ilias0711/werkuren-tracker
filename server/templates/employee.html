@@ -1,6 +1,51 @@
 {% extends "base.html" %}
 {% block title %}{{ user.name }} – WerkTracker{% endblock %}
 
+{% block extra_head %}
+<style>
+  .cb-header { display:flex; justify-content:space-between; align-items:center; }
+
+  .editable-time {
+    cursor: pointer;
+    position: relative;
+  }
+  .editable-time .time-val {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 7px;
+    border: 2px solid transparent;
+    transition: background .15s, border-color .15s;
+    font-weight: 600;
+    min-width: 44px;
+  }
+  .editable-time:hover .time-val {
+    background: #eff6ff;
+    border-color: #bfdbfe;
+  }
+  .editable-time input[type="time"] {
+    width: 100px;
+    padding: 3px 7px;
+    border: 2px solid var(--accent);
+    border-radius: 7px;
+    font-size: .9rem;
+    font-weight: 700;
+    color: var(--primary);
+    outline: none;
+    background: #eff6ff;
+  }
+  .save-flash { animation: flashGreen .6s ease; }
+  @keyframes flashGreen {
+    0%   { background: #dcfce7; }
+    100% { background: transparent; }
+  }
+  .err-flash { animation: flashRed .6s ease; }
+  @keyframes flashRed {
+    0%   { background: #fee2e2; }
+    100% { background: transparent; }
+  }
+</style>
+{% endblock %}
+
 {% block body %}
 <div class="sidebar">
   <div class="logo"><i class="bi bi-clock-history me-2"></i>Werk<span>Tracker</span></div>
@@ -101,20 +146,27 @@
 
   <!-- Sessies -->
   <div class="card-box">
-    <div class="cb-header"><i class="bi bi-list-ul me-2"></i>Sessies</div>
+    <div class="cb-header">
+      <span><i class="bi bi-list-ul me-2"></i>Sessies</span>
+      <span style="font-size:.78rem;color:#9ca3af;font-weight:400"><i class="bi bi-pencil me-1"></i>Klik op een tijd om te bewerken</span>
+    </div>
     <div class="table-responsive">
-      <table class="table table-hover mb-0">
+      <table class="table table-hover mb-0" id="sessionsTable">
         <thead>
           <tr><th>Datum</th><th>Start</th><th>Stop</th><th>Duur</th><th>Status</th><th></th></tr>
         </thead>
         <tbody>
           {% if sessions %}
             {% for s in sessions %}
-            <tr>
+            <tr data-session-id="{{ s.id }}" data-date="{{ s.date }}">
               <td>{{ s.date }}</td>
-              <td>{{ s.start_time[11:16] }}</td>
-              <td>{{ s.end_time[11:16] if s.end_time else '–' }}</td>
-              <td><strong>{{ format_duration(s.total_sec) }}</strong></td>
+              <td class="editable-time" data-field="start" data-time="{{ s.start_time[11:16] }}" title="Klik om te bewerken">
+                <span class="time-val">{{ s.start_time[11:16] }}</span>
+              </td>
+              <td class="editable-time" data-field="end" data-time="{{ s.end_time[11:16] if s.end_time else '' }}" title="Klik om te bewerken">
+                <span class="time-val">{{ s.end_time[11:16] if s.end_time else '–' }}</span>
+              </td>
+              <td class="duration-cell"><strong>{{ format_duration(s.total_sec) }}</strong></td>
               <td>
                 {% if not s.end_time %}
                   <span class="badge-online">Actief</span>
@@ -122,17 +174,12 @@
                   <span class="badge-offline">Klaar</span>
                 {% endif %}
               </td>
-              <td style="white-space:nowrap">
-                <button class="btn btn-sm btn-outline-primary"
-                  onclick="openEdit({{ s.id }}, '{{ s.start_time[:16] }}', '{{ s.end_time[:16] if s.end_time else '' }}', {{ user.id }})"
-                  style="font-size:.75rem;padding:3px 10px;border-radius:8px">
-                  <i class="bi bi-pencil"></i> Bewerken
-                </button>
+              <td>
                 <form method="POST" action="/sessie/{{ s.id }}/verwijderen" style="display:inline"
                       onsubmit="return confirm('Sessie verwijderen?')">
                   <input type="hidden" name="user_id" value="{{ user.id }}">
                   <button type="submit" class="btn btn-sm btn-outline-danger"
-                    style="font-size:.75rem;padding:3px 10px;border-radius:8px">
+                    style="font-size:.75rem;padding:3px 8px;border-radius:8px">
                     <i class="bi bi-trash"></i>
                   </button>
                 </form>
@@ -148,39 +195,6 @@
   </div>
 </div>
 
-<!-- Bewerkmodal -->
-<div class="modal fade" id="editModal" tabindex="-1">
-  <div class="modal-dialog modal-dialog-centered">
-    <div class="modal-content" style="border-radius:16px;border:none">
-      <div class="modal-header" style="border:none;padding:20px 24px 0">
-        <h5 class="modal-title fw-bold" style="color:var(--primary)"><i class="bi bi-pencil-square me-2"></i>Sessie bewerken</h5>
-        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-      </div>
-      <form id="editForm" method="POST">
-        <input type="hidden" name="user_id" id="editUserId">
-        <div class="modal-body" style="padding:20px 24px">
-          <div class="mb-3">
-            <label class="form-label fw-600" style="font-size:.88rem;font-weight:700">Starttijd</label>
-            <input type="datetime-local" class="form-control" name="start_time" id="editStart" required>
-          </div>
-          <div class="mb-3">
-            <label class="form-label fw-600" style="font-size:.88rem;font-weight:700">Stoptijd</label>
-            <input type="datetime-local" class="form-control" name="end_time" id="editEnd" required>
-          </div>
-          <div class="alert alert-info" style="font-size:.82rem;border-radius:10px;padding:10px 14px">
-            <i class="bi bi-info-circle me-1"></i>De duur wordt automatisch herberekend op basis van start- en stoptijd.
-          </div>
-        </div>
-        <div class="modal-footer" style="border:none;padding:0 24px 20px;gap:8px">
-          <button type="button" class="btn btn-light" data-bs-dismiss="modal" style="border-radius:10px;font-weight:600">Annuleren</button>
-          <button type="submit" class="btn btn-primary" style="border-radius:10px;font-weight:700;background:var(--accent);border:none">
-            <i class="bi bi-check-lg me-1"></i>Opslaan
-          </button>
-        </div>
-      </form>
-    </div>
-  </div>
-</div>
 
 <!-- Screenshot Modal -->
 <div class="modal fade" id="ssModal" tabindex="-1">
@@ -208,12 +222,82 @@
     new bootstrap.Modal(document.getElementById('ssModal')).show();
   }
 
-  function openEdit(sessionId, startTime, endTime, userId) {
-    document.getElementById('editForm').action = '/sessie/' + sessionId + '/bewerken';
-    document.getElementById('editUserId').value = userId;
-    document.getElementById('editStart').value = startTime;
-    document.getElementById('editEnd').value = endTime || startTime;
-    new bootstrap.Modal(document.getElementById('editModal')).show();
+  // ── Inline tijdbewerking ──────────────────────────────────────────────────────
+  document.querySelectorAll('.editable-time').forEach(cell => {
+    cell.addEventListener('click', () => startEdit(cell));
+  });
+
+  function startEdit(cell) {
+    if (cell.querySelector('input')) return; // al aan het bewerken
+    const span    = cell.querySelector('.time-val');
+    const curTime = cell.dataset.time || '00:00';
+    const input   = document.createElement('input');
+    input.type    = 'time';
+    input.value   = curTime;
+    span.style.display = 'none';
+    cell.appendChild(input);
+    input.focus();
+
+    const save = () => saveTime(cell, input, span);
+    input.addEventListener('blur',   save);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') { input.removeEventListener('blur', save); cancelEdit(cell, span); }
+    });
+  }
+
+  function cancelEdit(cell, span) {
+    const inp = cell.querySelector('input');
+    if (inp) inp.remove();
+    span.style.display = '';
+  }
+
+  async function saveTime(cell, input, span) {
+    const newTime = input.value;
+    if (!newTime) { cancelEdit(cell, span); return; }
+
+    const row       = cell.closest('tr');
+    const sessionId = row.dataset.sessionId;
+    const date      = row.dataset.date;
+    const field     = cell.dataset.field;
+
+    // Bouw start en end datetime strings
+    const allCells  = row.querySelectorAll('.editable-time');
+    let startTime   = null, endTime = null;
+
+    allCells.forEach(c => {
+      const t = c === cell ? newTime : (c.dataset.time || '00:00');
+      if (c.dataset.field === 'start') startTime = date + ' ' + t + ':00';
+      if (c.dataset.field === 'end')   endTime   = date + ' ' + t + ':00';
+    });
+
+    // Herstel UI tijdens opslaan
+    input.remove();
+    span.textContent   = newTime;
+    span.style.display = '';
+
+    try {
+      const r = await fetch(`/api/sessie/${sessionId}/bewerken`, {
+        method:  'POST',
+        headers: {'Content-Type': 'application/json'},
+        body:    JSON.stringify({start_time: startTime, end_time: endTime})
+      });
+      const d = await r.json();
+      if (d.ok) {
+        cell.dataset.time = newTime;
+        // Update duurcel
+        row.querySelector('.duration-cell').innerHTML = `<strong>${d.duration}</strong>`;
+        // Flash groen
+        row.classList.add('save-flash');
+        setTimeout(() => row.classList.remove('save-flash'), 700);
+      } else {
+        span.textContent = cell.dataset.time;
+        row.classList.add('err-flash');
+        setTimeout(() => row.classList.remove('err-flash'), 700);
+      }
+    } catch(e) {
+      span.textContent = cell.dataset.time;
+    }
   }
 </script>
 {% endblock %}

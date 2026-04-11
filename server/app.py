@@ -495,6 +495,23 @@ def session_active():
     return jsonify({"session": session})
 
 
+@app.route("/api/sessie/<int:session_id>/bewerken", methods=["POST"])
+@manager_required
+def api_sessie_bewerken(session_id):
+    data       = request.json or {}
+    start_time = data.get("start_time", "")
+    end_time   = data.get("end_time", "")
+    ok = db.edit_session(session_id, start_time, end_time)
+    if ok:
+        conn = db.get_db()
+        row  = conn.execute("SELECT * FROM sessions WHERE id=?", (session_id,)).fetchone()
+        conn.close()
+        s = dict(row) if row else {}
+        return jsonify({"ok": True, "total_sec": s.get("total_sec", 0),
+                        "duration": db.format_duration(s.get("total_sec", 0))})
+    return jsonify({"ok": False}), 400
+
+
 @app.route("/api/session/pause", methods=["POST"])
 def session_pause_sync():
     data       = request.json or {}
