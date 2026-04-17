@@ -305,7 +305,7 @@ def get_today_seconds_for_user(user_id: int) -> int:
 def format_duration(seconds: int) -> str:
     h = seconds // 3600
     m = (seconds % 3600) // 60
-    return f"{h}u {m:02d}m"
+    return f"{h}h {m:02d}m"
 
 
 # ── Manager: alle screenshots ─────────────────────────────────────────────────
