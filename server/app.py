@@ -130,11 +130,12 @@ def dashboard():
         uid = s["user_id"]
         today_secs[uid] = today_secs.get(uid, 0) + s["total_sec"]
 
-    # Tel actieve sessies mee (nog bezig)
+    # Tel actieve sessies mee (nog bezig), pauzetijd aftrekken
     for s in active_sessions:
         uid   = s["user_id"]
         start = datetime.fromisoformat(s["start_time"])
         secs  = int((datetime.now() - start).total_seconds())
+        secs  = max(0, secs - (s.get("pause_sec") or 0))
         today_secs[uid] = today_secs.get(uid, 0) + secs
 
     stats = []
