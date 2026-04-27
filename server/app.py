@@ -481,9 +481,10 @@ def session_start():
 def session_stop():
     data       = request.json or {}
     session_id = data.get("session_id")
+    work_sec   = int(data.get("work_sec", 0))
     pause_sec  = int(data.get("pause_sec", 0))
     if session_id:
-        db.stop_session(int(session_id), pause_sec)
+        db.stop_session(int(session_id), work_sec, pause_sec)
     return jsonify({"status": "gestopt"})
 
 
@@ -520,6 +521,17 @@ def session_pause_sync():
     pause_sec  = int(data.get("pause_sec", 0))
     if session_id:
         db.update_session_pause(int(session_id), pause_sec)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/api/session/sync", methods=["POST"])
+def session_sync():
+    """Tussentijds work_sec opslaan."""
+    data       = request.json or {}
+    session_id = data.get("session_id")
+    work_sec   = int(data.get("work_sec", 0))
+    if session_id:
+        db.sync_work_sec(int(session_id), work_sec)
     return jsonify({"status": "ok"})
 
 

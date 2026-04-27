@@ -45,12 +45,13 @@ def init_db():
         )
     """)
 
-    # Migratie: voeg pause_sec toe aan bestaande databases
-    try:
-        c.execute("ALTER TABLE sessions ADD COLUMN pause_sec INTEGER DEFAULT 0")
-        conn.commit()
-    except Exception:
-        pass  # Kolom bestaat al
+    # Migraties voor bestaande databases
+    for col in ["pause_sec INTEGER DEFAULT 0", "work_sec INTEGER DEFAULT 0"]:
+        try:
+            c.execute(f"ALTER TABLE sessions ADD COLUMN {col}")
+            conn.commit()
+        except Exception:
+            pass
 
     c.execute("""
         CREATE TABLE IF NOT EXISTS screenshots (
@@ -162,15 +163,21 @@ def start_session(user_id: int, email: str, name: str) -> int:
     return session_id
 
 
-def stop_session(session_id: int, pause_sec: int = 0):
+def stop_session(session_id: int, work_sec: int = 0, pause_sec: int = 0):
     conn = get_db()
-    row = conn.execute("SELECT start_time FROM sessions WHERE id=?", (session_id,)).fetchone()
-    if row:
-        start     = datetime.fromisoformat(row["start_time"])
-        total_sec = max(0, int((datetime.now() - start).total_seconds()) - pause_sec)
-        conn.execute("UPDATE sessions SET end_time=?, total_sec=?, pause_sec=? WHERE id=?",
-                     (datetime.now().isoformat(), total_sec, pause_sec, session_id))
-        conn.commit()
+    conn.execute(
+        "UPDATE sessions SET end_time=?, total_sec=?, work_sec=?, pause_sec=? WHERE id=?",
+        (datetime.now().isoformat(), work_sec, work_sec, pause_sec, session_id)
+    )
+    conn.commit()
+    conn.close()
+
+
+def sync_work_sec(session_id: int, work_sec: int):
+    """Tussentijds de gewerkte seconden opslaan."""
+    conn = get_db()
+    conn.execute("UPDATE sessions SET work_sec=? WHERE id=?", (work_sec, session_id))
+    conn.commit()
     conn.close()
 
 

@@ -209,34 +209,36 @@
   const SS_INTERVAL = {{ ss_interval }} * 60 * 1000; // ms
   const LS_KEY      = `wt_session_${USER_ID}`;
 
-  // ── State ────────────────────────────────────────────────────────────────────
-  let isTracking   = false;
-  let isPaused     = false;
-  let sessionId    = null;
-  let startTime    = null;   // ms timestamp
-  let pausedAt     = null;   // ms timestamp
-  let totalPaused  = 0;      // ms
-  let timerTick    = null;
-  let ssTimer      = null;
-  let syncTimer    = null;
+  // ── State ─────────────────────────────────────────────────────────────────────
+  // Werkt net als Toggl/Clockify: sla gewerkte seconden direct op.
+  // workSec  = bevestigde gewerkte seconden (gesynchroniseerd met server)
+  // resumedAt = timestamp waarop we het laatste hervat zijn (ms)
+  let isTracking = false;
+  let isPaused   = false;
+  let sessionId  = null;
+  let workSec    = 0;       // opgebouwde werktijd in seconden
+  let resumedAt  = null;    // ms — wanneer het laatste hervat is
+  let timerTick  = null;
+  let ssTimer    = null;
+  let syncTimer  = null;
   let screenStream = null;
-  let ssCount      = 0;
-  let actClicks    = 0;
+  let ssCount    = 0;
+  let actClicks  = 0;
 
   document.addEventListener('mousemove', () => actClicks++);
   document.addEventListener('click',     () => actClicks += 2);
   document.addEventListener('keydown',   () => actClicks += 3);
 
-  // ── LocalStorage helpers ──────────────────────────────────────────────────────
+  // ── Helpers ───────────────────────────────────────────────────────────────────
+  function currentWorkSec() {
+    if (!isTracking || isPaused || !resumedAt) return workSec;
+    return workSec + Math.floor((Date.now() - resumedAt) / 1000);
+  }
+
   function saveState() {
     if (!sessionId) return;
     localStorage.setItem(LS_KEY, JSON.stringify({
-      sessionId,
-      startTime,
-      totalPaused,
-      isPaused,
-      pausedAt,
-      lastSeen: Date.now()
+      sessionId, workSec, resumedAt, isPaused
     }));
   }
 
@@ -244,27 +246,25 @@
     localStorage.removeItem(LS_KEY);
   }
 
-  // ── Sync pauze naar server ────────────────────────────────────────────────────
-  async function syncPause() {
+  async function syncToServer() {
     if (!sessionId) return;
-    const pauseSec = Math.floor(currentTotalPausedMs() / 1000);
     try {
-      await fetch('/api/session/pause', {
+      await fetch('/api/session/sync', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({session_id: sessionId, pause_sec: pauseSec})
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ session_id: sessionId, work_sec: currentWorkSec() })
       });
     } catch(e) {}
   }
 
-  function currentTotalPausedMs() {
-    if (isPaused && pausedAt) {
-      return totalPaused + (Date.now() - pausedAt);
-    }
-    return totalPaused;
+  function showSec(sec) {
+    const h = Math.floor(sec / 3600);
+    const m = Math.floor((sec % 3600) / 60);
+    const s = sec % 60;
+    return String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
   }
 
-  // ── Pagina laden: herstel actieve sessie ─────────────────────────────────────
+  // ── Pagina laden: herstel actieve sessie ──────────────────────────────────────
   window.addEventListener('DOMContentLoaded', async () => {
     try {
       const r = await fetch(`/api/session/active?user_id=${USER_ID}`);
@@ -272,76 +272,65 @@
       if (d.session && d.session.id) {
         const srv = d.session;
         sessionId = srv.id;
-        startTime = new Date(srv.start_time).getTime();
 
+        // Laad opgeslagen staat (localStorage heeft voorrang boven server)
         const saved = JSON.parse(localStorage.getItem(LS_KEY) || 'null');
         if (saved && saved.sessionId === sessionId) {
-          totalPaused = saved.totalPaused || 0;
-          isPaused    = saved.isPaused    || false;
-          pausedAt    = saved.pausedAt    || null;
-
-          // Offline tijd detecteren: tijd tussen sluiten en nu heropenen
-          const lastSeen   = saved.lastSeen || Date.now();
-          const offlineMs  = Date.now() - lastSeen;
-          const THRESHOLD  = 2 * 60 * 1000; // 2 minuten
-
-          if (!isPaused && offlineMs > THRESHOLD) {
-            // Browser was gesloten terwijl tracker liep → tel offline tijd als pauze
-            totalPaused += offlineMs;
-            showToast(`⏸ ${Math.round(offlineMs/60000)} min offline — niet meegeteld als werktijd`);
+          workSec   = saved.workSec   || 0;
+          isPaused  = saved.isPaused  || false;
+          resumedAt = saved.resumedAt || null;
+          // Herstel: als ze niet gepauzeerd waren maar de pagina gesloten hebben,
+          // zet dan op pauze — de gebruiker moet zelf op HERVAT klikken
+          if (!isPaused && resumedAt) {
+            isPaused  = true;
+            resumedAt = null;
+            showToast('⏸ Sessie hersteld — klik HERVAT om verder te gaan');
+          } else {
+            showToast('⏱ Sessie hersteld');
           }
         } else {
-          // Geen lokale state — gebruik server pause_sec als basis
-          // Voeg ook alle tijd toe sinds sessie start die niet als werk is geregistreerd
-          const serverPauseMs  = (srv.pause_sec || 0) * 1000;
-          const totalElapsedMs = Date.now() - startTime;
-          // Schat: alles boven 12 uur is waarschijnlijk offline tijd
-          const maxWorkMs      = 12 * 60 * 60 * 1000;
-          if (totalElapsedMs - serverPauseMs > maxWorkMs) {
-            totalPaused = totalElapsedMs - maxWorkMs;
-          } else {
-            totalPaused = serverPauseMs;
-          }
-          isPaused = false;
-          pausedAt = null;
+          // Geen lokale state — gebruik work_sec van server
+          workSec   = srv.work_sec || 0;
+          isPaused  = true;   // veilige standaard: gepauzeerd tonen
+          resumedAt = null;
+          showToast('⏱ Sessie hersteld — klik HERVAT om verder te gaan');
         }
 
         isTracking = true;
         setUI(isPaused ? 'paused' : 'working');
+        if (!isPaused) resumedAt = resumedAt || Date.now();
         timerTick = setInterval(updateTimer, 1000);
         ssTimer   = setInterval(takeScreenshot, SS_INTERVAL);
-        syncTimer = setInterval(syncPause, 30000);
+        syncTimer = setInterval(syncToServer, 30000);
         updateTimer();
-
-        showToast('⏱ Sessie hersteld — tracker loopt door');
       }
     } catch(e) {}
   });
 
-  // Sla state op bij sluiten tabblad
   window.addEventListener('beforeunload', () => {
+    // Sla huidige werktijd op voordat tabblad sluit
+    if (!isPaused && resumedAt) {
+      workSec = currentWorkSec();
+    }
     saveState();
-    if (sessionId) syncPause();
+    syncToServer();
   });
 
-  // ── Functies ─────────────────────────────────────────────────────────────────
-
+  // ── START ─────────────────────────────────────────────────────────────────────
   async function startTracking() {
     try {
       const r = await fetch('/api/session/start', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
+        method: 'POST', headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({user_id: USER_ID, email: USER_EMAIL, name: USER_NAME})
       });
-      const d = await r.json();
-      sessionId = d.session_id;
+      sessionId = (await r.json()).session_id;
     } catch(e) {
       sessionId = 'offline_' + Date.now();
     }
 
     try {
       screenStream = await navigator.mediaDevices.getDisplayMedia({
-        video: { mediaSource: 'screen', width: {ideal:1920}, height: {ideal:1080} }
+        video: {mediaSource: 'screen', width: {ideal: 1920}, height: {ideal: 1080}}
       });
       document.getElementById('shareBanner').style.display = 'flex';
       screenStream.getVideoTracks()[0].addEventListener('ended', () => {
@@ -350,37 +339,41 @@
       });
     } catch(e) {}
 
-    isTracking  = true;
-    isPaused    = false;
-    startTime   = Date.now();
-    totalPaused = 0;
-    pausedAt    = null;
+    isTracking = true;
+    isPaused   = false;
+    workSec    = 0;
+    resumedAt  = Date.now();
 
     setUI('working');
     timerTick = setInterval(updateTimer, 1000);
     ssTimer   = setInterval(takeScreenshot, SS_INTERVAL);
-    syncTimer = setInterval(syncPause, 30000);
+    syncTimer = setInterval(syncToServer, 30000);
     saveState();
   }
 
+  // ── PAUZE / HERVAT ────────────────────────────────────────────────────────────
   function togglePause() {
     if (!isPaused) {
-      isPaused = true;
-      pausedAt = Date.now();
+      // → Pauzeren: sla gewerkte seconden op, stop teller
+      workSec   = currentWorkSec();
+      resumedAt = null;
+      isPaused  = true;
       setUI('paused');
     } else {
-      totalPaused += Date.now() - pausedAt;
-      pausedAt     = null;
-      isPaused     = false;
+      // → Hervatten: begin opnieuw te tellen vanaf nu
+      resumedAt = Date.now();
+      isPaused  = false;
       setUI('working');
     }
     saveState();
-    syncPause();
+    syncToServer();
   }
 
+  // ── STOP ──────────────────────────────────────────────────────────────────────
   async function stopTracking() {
     if (!confirm('Wil je de tracking stoppen?')) return;
 
+    const finalSec = currentWorkSec();
     isTracking = false;
     isPaused   = false;
     clearInterval(timerTick);
@@ -392,17 +385,17 @@
       screenStream = null;
     }
 
-    const pauseSec = Math.floor(currentTotalPausedMs() / 1000);
     try {
       await fetch('/api/session/stop', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({session_id: sessionId, pause_sec: pauseSec})
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({session_id: sessionId, work_sec: finalSec})
       });
     } catch(e) {}
 
     clearState();
     sessionId = null;
+    workSec   = 0;
+    resumedAt = null;
     setUI('idle');
     document.getElementById('timerDisplay').textContent = '00:00:00';
     document.getElementById('pauseInfo').textContent    = '';
@@ -410,30 +403,12 @@
     location.reload();
   }
 
+  // ── TIMER TICK ────────────────────────────────────────────────────────────────
   function updateTimer() {
     if (!isTracking) return;
-    saveState(); // altijd lastSeen bijhouden
-
-    if (isPaused) {
-      // Timer bevroren — alleen pauzetijd tonen
-      const pauseMs = totalPaused + (pausedAt ? Date.now() - pausedAt : 0);
-      const pm = Math.floor(pauseMs / 60000);
-      document.getElementById('pauseInfo').textContent = `Pauzetijd: ${pm} min`;
-      return;
-    }
-
-    const elapsed = Date.now() - startTime - totalPaused;
-    const total   = Math.max(0, Math.floor(elapsed / 1000));
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    document.getElementById('timerDisplay').textContent =
-      String(h).padStart(2,'0') + ':' + String(m).padStart(2,'0') + ':' + String(s).padStart(2,'0');
-
-    if (totalPaused > 0) {
-      const pm = Math.floor(totalPaused / 60000);
-      document.getElementById('pauseInfo').textContent = `Pauzetijd: ${pm} min`;
-    }
+    if (isPaused) return; // bevroren — niets doen
+    saveState();
+    document.getElementById('timerDisplay').textContent = showSec(currentWorkSec());
   }
 
   async function takeScreenshot() {
