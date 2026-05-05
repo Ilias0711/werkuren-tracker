@@ -46,7 +46,8 @@ def init_db():
     """)
 
     # Migraties voor bestaande databases
-    for col in ["pause_sec INTEGER DEFAULT 0", "work_sec INTEGER DEFAULT 0"]:
+    for col in ["pause_sec INTEGER DEFAULT 0", "work_sec INTEGER DEFAULT 0",
+                "is_paused INTEGER DEFAULT 0"]:
         try:
             c.execute(f"ALTER TABLE sessions ADD COLUMN {col}")
             conn.commit()
@@ -173,10 +174,11 @@ def stop_session(session_id: int, work_sec: int = 0, pause_sec: int = 0):
     conn.close()
 
 
-def sync_work_sec(session_id: int, work_sec: int):
-    """Tussentijds de gewerkte seconden opslaan."""
+def sync_work_sec(session_id: int, work_sec: int, is_paused: bool = False):
+    """Tussentijds de gewerkte seconden en pauze-status opslaan."""
     conn = get_db()
-    conn.execute("UPDATE sessions SET work_sec=? WHERE id=?", (work_sec, session_id))
+    conn.execute("UPDATE sessions SET work_sec=?, is_paused=? WHERE id=?",
+                 (work_sec, 1 if is_paused else 0, session_id))
     conn.commit()
     conn.close()
 

@@ -122,6 +122,7 @@ def dashboard():
     employees      = db.get_all_users(role="employee")
     active_sessions = db.get_active_sessions()
     active_ids     = {s["user_id"] for s in active_sessions}
+    paused_ids     = {s["user_id"] for s in active_sessions if s.get("is_paused")}
     today_sessions = db.get_today_sessions()
 
     # Tel vandaag-uren per user_id
@@ -147,13 +148,14 @@ def dashboard():
             "name":        emp["name"],
             "email":       emp["email"],
             "online":      uid in active_ids,
+            "paused":      uid in paused_ids,
             "today":       db.format_duration(today_secs.get(uid, 0)),
             "week":        db.format_duration(s["week_sec"]),
             "month":       db.format_duration(s["month_sec"]),
             "screenshots": s["screenshot_count"],
         })
 
-    stats.sort(key=lambda x: (not x["online"], x["name"]))
+    stats.sort(key=lambda x: (not x["online"], x["paused"], x["name"]))
     return render_template("index.html",
                            stats=stats,
                            active_count=len(active_ids),
@@ -526,12 +528,13 @@ def session_pause_sync():
 
 @app.route("/api/session/sync", methods=["POST"])
 def session_sync():
-    """Tussentijds work_sec opslaan."""
+    """Tussentijds work_sec en pauze-status opslaan."""
     data       = request.json or {}
     session_id = data.get("session_id")
     work_sec   = int(data.get("work_sec", 0))
+    is_paused  = bool(data.get("is_paused", False))
     if session_id:
-        db.sync_work_sec(int(session_id), work_sec)
+        db.sync_work_sec(int(session_id), work_sec, is_paused)
     return jsonify({"status": "ok"})
 
 
