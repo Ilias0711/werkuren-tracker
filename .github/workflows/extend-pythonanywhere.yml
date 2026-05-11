@@ -2,14 +2,37 @@ name: Extend PythonAnywhere Web App
 
 on:
   schedule:
-    - cron: '0 9 1 * *'  # Elke 1e van de maand om 9:00
-  workflow_dispatch:       # Ook handmatig uitvoerbaar
+    - cron: '0 9 1 * *'   # Elke 1e van de maand om 9:00 UTC
+    - cron: '0 9 15 * *'  # Extra check: elke 15e van de maand
+  workflow_dispatch:        # Ook handmatig uitvoerbaar
 
 jobs:
   extend:
     runs-on: ubuntu-latest
     steps:
-      - name: Extend PythonAnywhere web app
+      - name: Extend PythonAnywhere web app (1 maand)
         run: |
-          curl -s -X POST "https://eu.pythonanywhere.com/api/v0/user/werktracker/webapps/werktracker.eu.pythonanywhere.com/extend/" \
+          echo "Verlengen web app op $(date)..."
+          RESPONSE=$(curl -s -w "\n%{http_code}" -X POST \
+            "https://eu.pythonanywhere.com/api/v0/user/werktracker/webapps/werktracker.eu.pythonanywhere.com/extend/" \
+            -H "Authorization: Token ${{ secrets.PYTHONANYWHERE_TOKEN }}")
+
+          HTTP_CODE=$(echo "$RESPONSE" | tail -1)
+          BODY=$(echo "$RESPONSE" | head -1)
+
+          echo "HTTP status: $HTTP_CODE"
+          echo "Response: $BODY"
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "✅ Web app verlengd tot volgende maand!"
+          else
+            echo "❌ Verlengen mislukt (HTTP $HTTP_CODE) — log handmatig in op pythonanywhere.com"
+            exit 1
+          fi
+
+      - name: Reload web app
+        run: |
+          curl -s -X POST \
+            "https://eu.pythonanywhere.com/api/v0/user/werktracker/webapps/werktracker.eu.pythonanywhere.com/reload/" \
             -H "Authorization: Token ${{ secrets.PYTHONANYWHERE_TOKEN }}"
+          echo "✅ Web app herstart"
